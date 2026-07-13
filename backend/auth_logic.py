@@ -25,23 +25,8 @@ def using_fallback_key():
     return signup_key() == _FALLBACK_DEV_KEY
 
 
-def _hash(password, salt=None):
-    """Salted PBKDF2-HMAC-SHA256, stored as 'salt_hex$hash_hex'."""
-    if salt is None:
-        salt = os.urandom(16).hex()
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000)
-    return f"{salt}${digest.hex()}"
-
-
-def _verify_password(password, stored):
-    """Returns (is_correct, is_legacy_format); legacy bare-SHA256 accounts
-    still verify and get upgraded automatically on next successful login."""
-    if "$" not in stored:
-        legacy_hash = hashlib.sha256(password.encode()).hexdigest()
-        return hmac.compare_digest(legacy_hash, stored), True
-    salt, _, hex_digest = stored.partition("$")
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000)
-    return hmac.compare_digest(digest.hex(), hex_digest), False
+def _hash(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def _static_users():
@@ -82,16 +67,10 @@ def check_password(username, password):
     static = _static_users()
     if username in static:
         return hmac.compare_digest(str(static[username]), password)
-
     accounts = _load_accounts()
-    if username not in accounts:
-        return False
-
-    is_correct, is_legacy = _verify_password(password, accounts[username])
-    if is_correct and is_legacy:
-        accounts[username] = _hash(password)
-        _save_accounts(accounts)
-    return is_correct
+    if username in accounts:
+        return hmac.compare_digest(accounts[username], _hash(password))
+    return False
 
 
 def create_account(username, password, key):
